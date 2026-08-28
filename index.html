@@ -1,0 +1,2031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MNIST — See the Digit</title>
+<meta name="description" content="An interactive demonstration of handwritten digit recognition using a PyTorch neural network." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   DESIGN TOKENS
+   ============================================================ */
+:root{
+  --bg: #08090a;
+  --surface: #131418;
+  --surface-2: #1b1d22;
+  --line: #26282e;
+  --line-strong: #34363c;
+  --text: #f3f2ee;
+  --text-dim: #8b8d93;
+  --text-dimmer: #55575e;
+  --accent: #ff3e2d;
+  --accent-soft: rgba(255,62,45,.14);
+  --accent-glow: rgba(255,62,45,.35);
+
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --ease: cubic-bezier(.16,.8,.24,1);
+  --ease-soft: cubic-bezier(.4,0,.2,1);
+}
+
+*{ margin:0; padding:0; box-sizing:border-box; }
+
+html{
+  background:var(--bg);
+  scroll-behavior:smooth;
+}
+
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-body);
+  font-size:16px;
+  line-height:1.5;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+img{ max-width:100%; display:block; }
+
+button{
+  font-family:inherit;
+  border:none;
+  background:none;
+  color:inherit;
+  cursor:pointer;
+}
+
+a{ color:inherit; text-decoration:none; }
+
+::selection{ background:var(--accent); color:#fff; }
+
+.eyebrow{
+  font-family:var(--font-mono);
+  font-size:.72rem;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:var(--text-dim);
+}
+
+.eyebrow em{
+  color:var(--accent);
+  font-style:normal;
+}
+
+/* Focus visibility for accessibility */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:4px;
+  border-radius:2px;
+}
+
+.visually-hidden{
+  position:absolute;
+  width:1px; height:1px;
+  overflow:hidden;
+  clip:rect(0 0 0 0);
+  white-space:nowrap;
+}
+
+.container{
+  width:100%;
+  max-width:1280px;
+  margin:0 auto;
+  padding:0 clamp(20px,5vw,64px);
+}
+
+section{
+  position:relative;
+  padding:clamp(80px,12vw,160px) 0;
+}
+
+/* ============================================================
+   REVEAL ON SCROLL
+   ============================================================ */
+.reveal{
+  opacity:0;
+  transform:translateY(28px);
+  transition:opacity .9s var(--ease), transform .9s var(--ease);
+}
+.reveal.is-visible{
+  opacity:1;
+  transform:translateY(0);
+}
+.reveal-delay-1{ transition-delay:.08s; }
+.reveal-delay-2{ transition-delay:.16s; }
+.reveal-delay-3{ transition-delay:.24s; }
+.reveal-delay-4{ transition-delay:.32s; }
+
+@media (prefers-reduced-motion: reduce){
+  .reveal{ opacity:1; transform:none; transition:none; }
+  html{ scroll-behavior:auto; }
+}
+
+/* ============================================================
+   LOADER
+   ============================================================ */
+#loader{
+  position:fixed; inset:0;
+  z-index:1000;
+  background:var(--bg);
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  gap:22px;
+  transition:opacity .6s var(--ease-soft), visibility .6s var(--ease-soft);
+}
+#loader.is-hidden{
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+}
+.loader-mark{
+  font-family:var(--font-display);
+  font-weight:700;
+  font-size:clamp(2.2rem,7vw,3.6rem);
+  letter-spacing:.02em;
+}
+.loader-bits{
+  font-family:var(--font-mono);
+  font-size:.85rem;
+  letter-spacing:.3em;
+  color:var(--text-dimmer);
+  min-height:1em;
+}
+.loader-bits span{
+  display:inline-block;
+  transition:color .15s, opacity .15s;
+}
+.loader-bits span.on{ color:var(--accent); opacity:1; }
+.loader-track{
+  width:180px; height:1px;
+  background:var(--line);
+  position:relative;
+  overflow:hidden;
+}
+.loader-track::after{
+  content:'';
+  position:absolute; left:0; top:0; bottom:0;
+  width:40%;
+  background:var(--accent);
+  animation:loaderSweep 1.1s var(--ease-soft) infinite;
+}
+@keyframes loaderSweep{
+  0%{ transform:translateX(-100%); }
+  100%{ transform:translateX(280%); }
+}
+
+/* ============================================================
+   CUSTOM CURSOR (desktop only)
+   ============================================================ */
+#cursor-dot{
+  position:fixed;
+  top:0; left:0;
+  width:8px; height:8px;
+  border-radius:50%;
+  background:var(--accent);
+  pointer-events:none;
+  z-index:999;
+  transform:translate(-50%,-50%);
+  transition:width .25s var(--ease-soft), height .25s var(--ease-soft), opacity .25s;
+  mix-blend-mode:difference;
+}
+#cursor-dot.is-active{ width:38px; height:38px; background:transparent; border:1px solid var(--accent); }
+@media (hover:none), (pointer:coarse){
+  #cursor-dot{ display:none; }
+}
+
+/* ============================================================
+   NAVIGATION
+   ============================================================ */
+#nav{
+  position:fixed;
+  top:20px; left:0; right:0;
+  z-index:200;
+  display:flex;
+  justify-content:center;
+  pointer-events:none;
+}
+.nav-inner{
+  pointer-events:auto;
+  width:calc(100% - 40px);
+  max-width:1120px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:12px 22px;
+  background:rgba(19,20,24,.6);
+  backdrop-filter:blur(14px) saturate(140%);
+  -webkit-backdrop-filter:blur(14px) saturate(140%);
+  border:1px solid var(--line);
+  border-radius:999px;
+}
+.nav-brand{
+  font-family:var(--font-mono);
+  font-size:.78rem;
+  letter-spacing:.08em;
+  display:flex; align-items:center; gap:8px;
+}
+.nav-brand .dot{
+  width:6px; height:6px; border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 8px var(--accent-glow);
+}
+.nav-links{
+  display:flex;
+  gap:28px;
+  list-style:none;
+}
+.nav-links a{
+  font-family:var(--font-mono);
+  font-size:.72rem;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--text-dim);
+  position:relative;
+  padding:4px 0;
+  transition:color .3s;
+}
+.nav-links a::after{
+  content:'';
+  position:absolute; left:0; bottom:0;
+  width:0; height:1px;
+  background:var(--accent);
+  transition:width .3s var(--ease);
+}
+.nav-links a.is-active,
+.nav-links a:hover{ color:var(--text); }
+.nav-links a.is-active::after{ width:100%; }
+
+@media (max-width:640px){
+  .nav-links{ gap:16px; }
+  .nav-links a{ font-size:.62rem; }
+}
+
+/* ============================================================
+   HERO
+   ============================================================ */
+#hero{
+  position:relative;
+  min-height:100svh;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  padding-top:120px;
+  overflow:hidden;
+}
+#hero-canvas{
+  position:absolute;
+  inset:0;
+  width:100%; height:100%;
+  z-index:0;
+  opacity:.85;
+}
+.hero-scrim{
+  position:absolute; inset:0;
+  background:radial-gradient(ellipse 60% 50% at 50% 40%, transparent 0%, var(--bg) 78%);
+  z-index:1;
+  pointer-events:none;
+}
+.hero-content{
+  position:relative;
+  z-index:2;
+}
+.hero-eyebrow{
+  display:flex; align-items:center; gap:10px;
+  margin-bottom:26px;
+}
+.hero-eyebrow .line{
+  width:36px; height:1px; background:var(--accent);
+}
+h1.hero-title{
+  font-family:var(--font-display);
+  font-weight:700;
+  font-size:clamp(2.6rem, 8.4vw, 7.4rem);
+  line-height:.98;
+  letter-spacing:-.02em;
+  text-transform:uppercase;
+}
+h1.hero-title .accent-word{
+  color:var(--accent);
+}
+.hero-sub{
+  max-width:480px;
+  margin-top:28px;
+  color:var(--text-dim);
+  font-size:1.02rem;
+  line-height:1.6;
+}
+.hero-actions{
+  margin-top:44px;
+  display:flex;
+  align-items:center;
+  gap:24px;
+  flex-wrap:wrap;
+}
+
+.btn-primary{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  font-family:var(--font-mono);
+  font-size:.8rem;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  padding:16px 30px;
+  background:var(--accent);
+  color:#0b0b0c;
+  font-weight:500;
+  border-radius:2px;
+  overflow:hidden;
+  transition:transform .4s var(--ease), box-shadow .4s var(--ease);
+}
+.btn-primary:hover{
+  transform:translateY(-2px);
+  box-shadow:0 12px 30px -8px var(--accent-glow);
+}
+.btn-primary .arrow{ transition:transform .3s var(--ease); }
+.btn-primary:hover .arrow{ transform:translateX(4px); }
+
+.btn-ghost{
+  font-family:var(--font-mono);
+  font-size:.75rem;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--text-dim);
+  border-bottom:1px solid var(--line-strong);
+  padding-bottom:3px;
+  transition:color .3s, border-color .3s;
+}
+.btn-ghost:hover{ color:var(--text); border-color:var(--text); }
+
+.hero-scroll-cue{
+  position:absolute;
+  bottom:36px; left:50%;
+  transform:translateX(-50%);
+  z-index:2;
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  font-family:var(--font-mono);
+  font-size:.62rem;
+  letter-spacing:.2em;
+  color:var(--text-dimmer);
+}
+.hero-scroll-cue .stem{
+  width:1px; height:34px;
+  background:linear-gradient(to bottom, var(--text-dimmer), transparent);
+  animation:cueFlow 2.2s ease-in-out infinite;
+}
+@keyframes cueFlow{
+  0%,100%{ opacity:.3; transform:scaleY(.7); transform-origin:top; }
+  50%{ opacity:1; transform:scaleY(1); transform-origin:top; }
+}
+
+/* ============================================================
+   SECTION HEADERS (shared)
+   ============================================================ */
+.section-head{
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+  margin-bottom:clamp(48px,7vw,88px);
+}
+.section-title{
+  font-family:var(--font-display);
+  font-weight:700;
+  font-size:clamp(2rem,5.4vw,4.2rem);
+  line-height:1.02;
+  letter-spacing:-.01em;
+  text-transform:uppercase;
+  max-width:14ch;
+}
+.section-title .accent-word{ color:var(--accent); }
+.section-note{
+  max-width:460px;
+  color:var(--text-dim);
+  font-size:.95rem;
+  line-height:1.6;
+}
+
+/* ============================================================
+   HOW IT WORKS — SCROLL STORY
+   ============================================================ */
+#pipeline{
+  position:relative;
+}
+.pipeline-sticky{
+  position:sticky;
+  top:0;
+  min-height:100svh;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  overflow:hidden;
+}
+.pipeline-track{
+  position:relative;
+  height:420vh;
+}
+.pipeline-stage{
+  position:sticky;
+  top:0;
+  height:100svh;
+  display:flex;
+  align-items:center;
+  padding-top:120px;
+}
+.pipeline-stage-inner{
+  width:100%;
+  display:grid;
+  grid-template-columns:.9fr 1.3fr;
+  gap:60px;
+  align-items:center;
+}
+.stage-index{
+  font-family:var(--font-mono);
+  font-size:.78rem;
+  letter-spacing:.14em;
+  color:var(--accent);
+  margin-bottom:18px;
+}
+.stage-title{
+  font-family:var(--font-display);
+  font-weight:700;
+  font-size:clamp(1.8rem,4.6vw,3.4rem);
+  text-transform:uppercase;
+  line-height:1.02;
+}
+.stage-desc{
+  margin-top:18px;
+  color:var(--text-dim);
+  max-width:34ch;
+  font-size:.95rem;
+  line-height:1.6;
+}
+.stage-visual{
+  position:relative;
+  height:360px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.pipeline-progress{
+  position:absolute;
+  left:0; right:0; bottom:60px;
+  display:flex;
+  justify-content:center;
+  gap:10px;
+}
+.pipeline-progress .dot{
+  width:26px; height:2px;
+  background:var(--line-strong);
+  transition:background .4s var(--ease);
+}
+.pipeline-progress .dot.is-active{ background:var(--accent); }
+
+/* pipeline stage visual variants */
+.pv-image{
+  width:200px; height:200px;
+  border:1px solid var(--line-strong);
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--font-mono); color:var(--text-dimmer); font-size:.7rem;
+  position:relative;
+}
+.pv-image svg{ width:70%; height:70%; }
+
+.pv-grid{
+  display:grid;
+  grid-template-columns:repeat(14,1fr);
+  gap:2px;
+  width:220px; height:220px;
+}
+.pv-grid div{
+  background:var(--surface-2);
+  border-radius:1px;
+}
+
+.pv-features{
+  font-family:var(--font-mono);
+  font-size:.6rem;
+  line-height:1.7;
+  color:var(--text-dimmer);
+  columns:6;
+  column-gap:10px;
+  width:100%;
+  max-height:280px;
+  overflow:hidden;
+}
+.pv-features span{ display:block; }
+.pv-features span b{ color:var(--accent); font-weight:500; }
+
+.pv-network{ width:100%; height:100%; }
+
+.pv-result{
+  font-family:var(--font-display);
+  font-weight:700;
+  font-size:9rem;
+  color:var(--accent);
+  line-height:1;
+  text-shadow:0 0 60px var(--accent-glow);
+}
+
+@media (max-width:900px){
+  .pipeline-stage-inner{ grid-template-columns:1fr; gap:32px; }
+  .stage-visual{ height:260px; }
+  .pipeline-track{ height:480vh; }
+}
+
+/* ============================================================
+   MODEL SECTION
+   ============================================================ */
+#model{
+  background:linear-gradient(180deg, var(--bg) 0%, var(--surface) 100%);
+}
+.model-grid{
+  display:grid;
+  grid-template-columns:1.2fr .8fr;
+  gap:72px;
+  align-items:center;
+}
+#network-canvas-wrap{
+  position:relative;
+  width:100%;
+  aspect-ratio:16/11;
+  background:var(--surface);
+  border:1px solid var(--line);
+}
+#network-canvas{ width:100%; height:100%; display:block; }
+.network-layer-labels{
+  display:flex; justify-content:space-between;
+  padding:14px 22px;
+  font-family:var(--font-mono);
+  font-size:.62rem;
+  letter-spacing:.08em;
+  color:var(--text-dimmer);
+  text-transform:uppercase;
+}
+
+.spec-list{
+  display:flex;
+  flex-direction:column;
+}
+.spec-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  padding:18px 0;
+  border-bottom:1px solid var(--line);
+}
+.spec-row:first-child{ border-top:1px solid var(--line); }
+.spec-label{
+  font-family:var(--font-mono);
+  font-size:.68rem;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--text-dimmer);
+}
+.spec-value{
+  font-family:var(--font-mono);
+  font-size:.92rem;
+  color:var(--text);
+}
+
+@media (max-width:900px){
+  .model-grid{ grid-template-columns:1fr; gap:40px; }
+}
+
+/* ============================================================
+   PREDICTION SECTION
+   ============================================================ */
+#predict{
+  position:relative;
+}
+.predict-panel{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:0;
+  border:1px solid var(--line);
+  background:var(--surface);
+}
+@media (max-width:900px){
+  .predict-panel{ grid-template-columns:1fr; }
+}
+
+/* dropzone */
+#dropzone{
+  position:relative;
+  padding:clamp(40px,5vw,64px);
+  min-height:440px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  border-right:1px solid var(--line);
+  cursor:pointer;
+  overflow:hidden;
+  transition:background .4s var(--ease);
+}
+@media (max-width:900px){ #dropzone{ border-right:none; border-bottom:1px solid var(--line); } }
+
+#dropzone-grid{
+  position:absolute; inset:0;
+  opacity:.5;
+  pointer-events:none;
+}
+#dropzone.is-dragover{ background:var(--accent-soft); }
+#dropzone.is-dragover .dz-border{ border-color:var(--accent); }
+
+.dz-border{
+  position:absolute; inset:14px;
+  border:1px dashed var(--line-strong);
+  transition:border-color .4s var(--ease);
+  pointer-events:none;
+}
+
+.dz-content{
+  position:relative; z-index:2;
+  display:flex; flex-direction:column; align-items:center; gap:16px;
+}
+.dz-icon{
+  width:56px; height:56px;
+  border:1px solid var(--line-strong);
+  display:flex; align-items:center; justify-content:center;
+  border-radius:50%;
+  transition:border-color .3s var(--ease), transform .3s var(--ease);
+}
+#dropzone:hover .dz-icon{ border-color:var(--accent); transform:scale(1.06); }
+.dz-icon svg{ width:20px; height:20px; }
+.dz-title{
+  font-family:var(--font-display);
+  font-weight:700;
+  font-size:1.3rem;
+  text-transform:uppercase;
+}
+.dz-hint{
+  font-family:var(--font-mono);
+  font-size:.72rem;
+  color:var(--text-dimmer);
+  letter-spacing:.04em;
+}
+.dz-preview{
+  position:relative; z-index:2;
+  display:none;
+  flex-direction:column;
+  align-items:center;
+  gap:20px;
+  width:100%;
+}
+.dz-preview.is-active{ display:flex; }
+.dz-preview img{
+  width:180px; height:180px;
+  object-fit:contain;
+  background:#000;
+  border:1px solid var(--line-strong);
+  image-rendering:pixelated;
+}
+.dz-preview-name{
+  font-family:var(--font-mono);
+  font-size:.7rem;
+  color:var(--text-dim);
+  word-break:break-all;
+  max-width:220px;
+  text-align:center;
+}
+.dz-replace{
+  font-family:var(--font-mono);
+  font-size:.65rem;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--text-dimmer);
+  text-decoration:underline;
+}
+
+/* predict result column */
+#predict-output{
+  padding:clamp(40px,5vw,64px);
+  min-height:440px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+}
+.po-idle{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  color:var(--text-dimmer);
+}
+.po-idle .eyebrow{ margin-bottom:4px; }
+.po-idle p{ font-size:.88rem; max-width:32ch; }
+
+.po-processing{
+  display:none;
+  flex-direction:column;
+  gap:16px;
+}
+.po-processing.is-active{ display:flex; }
+.proc-step{
+  font-family:var(--font-mono);
+  font-size:.8rem;
+  color:var(--text-dimmer);
+  display:flex; align-items:center; gap:10px;
+  opacity:.35;
+  transition:opacity .35s var(--ease), color .35s var(--ease);
+}
+.proc-step.is-current{ opacity:1; color:var(--text); }
+.proc-step.is-done{ opacity:.7; color:var(--accent); }
+.proc-step::before{
+  content:'';
+  width:6px; height:6px;
+  border-radius:50%;
+  background:currentColor;
+  flex-shrink:0;
+}
+
+.po-result{
+  display:none;
+  flex-direction:column;
+  gap:28px;
+}
+.po-result.is-active{ display:flex; }
+.result-label{ margin-bottom:2px; }
+.result-digit{
+  font-family:var(--font-display);
+  font-weight:700;
+  font-size:clamp(6rem,14vw,9rem);
+  line-height:.85;
+  color:var(--accent);
+  filter:blur(0px);
+  opacity:1;
+  transform:translateY(0) scale(1);
+  transition:opacity .7s var(--ease), transform .7s var(--ease), filter .7s var(--ease);
+}
+.result-digit.is-entering{
+  opacity:0;
+  transform:translateY(14px) scale(.94);
+  filter:blur(10px);
+}
+.result-confidence{
+  font-family:var(--font-mono);
+  font-size:.85rem;
+  color:var(--text-dim);
+  margin-top:-14px;
+}
+.result-confidence b{ color:var(--text); font-weight:500; }
+
+.prob-bars{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.prob-row{
+  display:grid;
+  grid-template-columns:16px 1fr 46px;
+  align-items:center;
+  gap:12px;
+  font-family:var(--font-mono);
+  font-size:.68rem;
+  color:var(--text-dimmer);
+}
+.prob-row.is-top{ color:var(--text); }
+.prob-track{
+  height:4px;
+  background:var(--surface-2);
+  position:relative;
+  overflow:hidden;
+}
+.prob-fill{
+  position:absolute; left:0; top:0; bottom:0;
+  width:0%;
+  background:var(--text-dimmer);
+  transition:width 1s var(--ease) .1s;
+}
+.prob-row.is-top .prob-fill{ background:var(--accent); }
+.prob-pct{ text-align:right; }
+
+.result-actions{
+  display:flex; gap:22px; align-items:center; flex-wrap:wrap;
+}
+
+.error-box{
+  display:none;
+  padding:16px 18px;
+  border:1px solid var(--line-strong);
+  background:var(--surface-2);
+  font-family:var(--font-mono);
+  font-size:.78rem;
+  color:var(--text-dim);
+}
+.error-box.is-active{ display:block; }
+.error-box b{ color:var(--accent); }
+
+/* View pixels panel */
+#pixel-panel{
+  display:none;
+  border-top:1px solid var(--line);
+  padding:clamp(40px,5vw,64px);
+}
+#pixel-panel.is-active{ display:block; }
+.pixel-grid-wrap{
+  display:flex;
+  gap:48px;
+  align-items:flex-start;
+  flex-wrap:wrap;
+}
+#pixel-grid{
+  display:grid;
+  grid-template-columns:repeat(28, 1fr);
+  width:min(400px, 90vw);
+  aspect-ratio:1/1;
+  border:1px solid var(--line-strong);
+}
+#pixel-grid .px{
+  aspect-ratio:1/1;
+  cursor:crosshair;
+}
+.pixel-readout{
+  font-family:var(--font-mono);
+  font-size:.78rem;
+  color:var(--text-dim);
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  min-width:160px;
+}
+.pixel-readout .row{ display:flex; justify-content:space-between; gap:20px; }
+.pixel-readout .row b{ color:var(--text); font-weight:500; }
+.pixel-readout .swatch{
+  width:100%; height:70px;
+  border:1px solid var(--line-strong);
+  background:#000;
+}
+
+/* ============================================================
+   CONFUSION MATRIX
+   ============================================================ */
+#confusion{
+  background:linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%);
+}
+.confusion-wrap{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:16px;
+  max-width:720px;
+}
+.cm-y-label{
+  writing-mode:vertical-rl;
+  transform:rotate(180deg);
+  font-family:var(--font-mono);
+  font-size:.66rem;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--text-dimmer);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.cm-col{ display:flex; flex-direction:column; gap:8px; }
+.cm-x-label{
+  font-family:var(--font-mono);
+  font-size:.66rem;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--text-dimmer);
+  text-align:center;
+}
+#cm-grid{
+  display:grid;
+  grid-template-columns:repeat(10, 1fr);
+  gap:3px;
+}
+.cm-cell{
+  aspect-ratio:1/1;
+  background:var(--surface-2);
+  position:relative;
+  border:1px solid transparent;
+}
+.cm-cell.is-diagonal{ border-color:var(--line-strong); }
+.cm-cell::after{
+  content:attr(data-tip);
+  position:absolute;
+  bottom:calc(100% + 6px);
+  left:50%;
+  transform:translateX(-50%);
+  background:var(--surface);
+  border:1px solid var(--line-strong);
+  padding:4px 8px;
+  font-family:var(--font-mono);
+  font-size:.6rem;
+  white-space:nowrap;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .2s;
+  z-index:5;
+}
+.cm-cell:hover::after{ opacity:1; }
+.cm-axis-row{
+  display:flex;
+  justify-content:space-between;
+  font-family:var(--font-mono);
+  font-size:.62rem;
+  color:var(--text-dimmer);
+  margin-top:6px;
+}
+.confusion-note{
+  margin-top:36px;
+  max-width:52ch;
+  color:var(--text-dim);
+  font-size:.92rem;
+  line-height:1.65;
+  padding-left:16px;
+  border-left:2px solid var(--accent);
+}
+.confusion-placeholder-tag{
+  display:inline-block;
+  margin-top:20px;
+  font-family:var(--font-mono);
+  font-size:.62rem;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--text-dimmer);
+  border:1px solid var(--line-strong);
+  padding:5px 10px;
+}
+
+/* ============================================================
+   PERFORMANCE
+   ============================================================ */
+.perf-grid{
+  display:grid;
+  grid-template-columns:repeat(3, 1fr);
+  gap:1px;
+  background:var(--line);
+  border:1px solid var(--line);
+}
+.perf-cell{
+  background:var(--bg);
+  padding:clamp(28px,4vw,48px) clamp(20px,3vw,36px);
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.perf-value{
+  font-family:var(--font-display);
+  font-weight:700;
+  font-size:clamp(2.1rem,4.6vw,3.4rem);
+  letter-spacing:-.01em;
+}
+.perf-value .accent-word{ color:var(--accent); }
+.perf-label{
+  font-family:var(--font-mono);
+  font-size:.66rem;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--text-dimmer);
+}
+@media (max-width:760px){
+  .perf-grid{ grid-template-columns:repeat(2,1fr); }
+}
+
+/* ============================================================
+   FINAL CTA
+   ============================================================ */
+#final-cta{
+  text-align:center;
+  padding-bottom:clamp(120px,14vw,200px);
+}
+.cta-title{
+  font-family:var(--font-display);
+  font-weight:700;
+  font-size:clamp(3rem,12vw,8rem);
+  letter-spacing:-.02em;
+  text-transform:uppercase;
+  color:var(--accent);
+}
+.cta-sub{
+  margin:22px auto 40px;
+  max-width:36ch;
+  color:var(--text-dim);
+}
+#final-cta .btn-primary{ margin:0 auto; }
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+footer{
+  border-top:1px solid var(--line);
+  padding:36px 0;
+}
+.footer-inner{
+  display:flex;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:14px;
+  font-family:var(--font-mono);
+  font-size:.68rem;
+  color:var(--text-dimmer);
+  letter-spacing:.04em;
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     LOADER
+     ============================================================ -->
+<div id="loader" aria-hidden="true">
+  <div class="loader-mark">MNIST</div>
+  <div class="loader-bits" id="loader-bits"></div>
+  <div class="loader-track"></div>
+</div>
+
+<div id="cursor-dot" aria-hidden="true"></div>
+
+<!-- ============================================================
+     NAVIGATION
+     ============================================================ -->
+<nav id="nav">
+  <div class="nav-inner">
+    <a href="#hero" class="nav-brand"><span class="dot"></span>MNIST / 01</a>
+    <ul class="nav-links">
+      <li><a href="#model" data-nav="model">Model</a></li>
+      <li><a href="#pipeline" data-nav="pipeline">How it works</a></li>
+      <li><a href="#predict" data-nav="predict">Try it</a></li>
+    </ul>
+  </div>
+</nav>
+
+<main>
+
+  <!-- ============================================================
+       HERO
+       ============================================================ -->
+  <section id="hero">
+    <canvas id="hero-canvas" aria-hidden="true"></canvas>
+    <div class="hero-scrim" aria-hidden="true"></div>
+    <div class="container hero-content">
+      <div class="hero-eyebrow"><span class="line"></span><span class="eyebrow">PyTorch · Handwritten Digit Recognition</span></div>
+      <h1 class="hero-title">SEE THE DIGIT.<br><span class="accent-word">LET THE MODEL DECIDE.</span></h1>
+      <p class="hero-sub">An interactive demonstration of handwritten digit recognition using a PyTorch neural network. Every pixel you draw becomes a number — and the network reads it.</p>
+      <div class="hero-actions">
+        <a href="#predict" class="btn-primary">TRY THE MODEL <span class="arrow">→</span></a>
+        <a href="#pipeline" class="btn-ghost">See how it works</a>
+      </div>
+    </div>
+    <div class="hero-scroll-cue"><span>SCROLL</span><span class="stem"></span></div>
+  </section>
+
+  <!-- ============================================================
+       HOW IT WORKS — SCROLL STORY
+       ============================================================ -->
+  <section id="pipeline">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow">The <em>pipeline</em></span>
+        <h2 class="section-title">FROM PIXELS<br>TO <span class="accent-word">PREDICTION.</span></h2>
+        <p class="section-note">Four transformations turn a picture of a digit into a single, confident answer. Scroll to walk through each one.</p>
+      </div>
+    </div>
+
+    <div class="pipeline-track" id="pipeline-track">
+      <div class="pipeline-stage" data-stage="0">
+        <div class="container pipeline-stage-inner">
+          <div>
+            <div class="stage-index">01 — IMAGE</div>
+            <div class="stage-title">A picture,<br>nothing more.</div>
+            <p class="stage-desc">It starts as an ordinary image — a digit written by hand, scanned or drawn, no different to the eye than any other photo.</p>
+          </div>
+          <div class="stage-visual">
+            <div class="pv-image">
+              <svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="4">
+                <path d="M35 20 C25 20 25 35 35 40 C25 45 25 80 40 80 L55 80 C68 80 68 55 58 50 C68 45 68 20 55 20 Z" />
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pipeline-stage" data-stage="1">
+        <div class="container pipeline-stage-inner">
+          <div>
+            <div class="stage-index">02 — PIXELS</div>
+            <div class="stage-title">28 × 28<br>pixel grid.</div>
+            <p class="stage-desc">The image is resized into a 28 by 28 grid — 784 individual squares, each holding one shade of grey.</p>
+          </div>
+          <div class="stage-visual">
+            <div class="pv-grid" id="pv-grid-vis"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pipeline-stage" data-stage="2">
+        <div class="container pipeline-stage-inner">
+          <div>
+            <div class="stage-index">03 — NEURAL NETWORK</div>
+            <div class="stage-title">784 input<br>features.</div>
+            <p class="stage-desc">Every pixel becomes one number the network can read — a value between 0 and 255 describing how dark it is.</p>
+          </div>
+          <div class="stage-visual">
+            <div class="pv-features" id="pv-features-vis"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pipeline-stage" data-stage="3">
+        <div class="container pipeline-stage-inner">
+          <div>
+            <div class="stage-index">04 — PREDICTION</div>
+            <div class="stage-title">10 output<br>classes.</div>
+            <p class="stage-desc">The network weighs every feature and settles on one of ten possible digits — the prediction.</p>
+          </div>
+          <div class="stage-visual">
+            <div class="pv-result">7</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pipeline-progress" id="pipeline-progress">
+        <span class="dot is-active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       THE MODEL
+       ============================================================ -->
+  <section id="model">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow">The <em>architecture</em></span>
+        <h2 class="section-title">A SMALL NETWORK,<br><span class="accent-word">CAREFULLY TUNED.</span></h2>
+      </div>
+
+      <div class="model-grid">
+        <div class="reveal">
+          <div id="network-canvas-wrap">
+            <canvas id="network-canvas" role="img" aria-label="Diagram of the neural network layers: 784 inputs, 128 hidden units, 64 hidden units, 10 outputs, with animated signal flow"></canvas>
+          </div>
+          <div class="network-layer-labels">
+            <span>784 Inputs</span><span>128</span><span>64</span><span>10 Outputs</span>
+          </div>
+        </div>
+
+        <div class="spec-list reveal reveal-delay-1">
+          <div class="spec-row"><span class="spec-label">Model</span><span class="spec-value">PyTorch Neural Network</span></div>
+          <div class="spec-row"><span class="spec-label">Input</span><span class="spec-value">28 × 28 grayscale image</span></div>
+          <div class="spec-row"><span class="spec-label">Hidden Layers</span><span class="spec-value">128 → 64</span></div>
+          <div class="spec-row"><span class="spec-label">Output</span><span class="spec-value">10 classes</span></div>
+          <div class="spec-row"><span class="spec-label">Activation</span><span class="spec-value">ReLU</span></div>
+          <div class="spec-row"><span class="spec-label">Classification</span><span class="spec-value">Multiclass</span></div>
+          <div class="spec-row"><span class="spec-label">Loss</span><span class="spec-value">Cross Entropy</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       PREDICTION
+       ============================================================ -->
+  <section id="predict">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Try it <em>yourself</em></span>
+        <h2 class="section-title">WHAT DID<br>YOU <span class="accent-word">DRAW?</span></h2>
+        <p class="section-note">Upload an image of a single handwritten digit. The network will look at it and decide, in real time, what it sees.</p>
+      </div>
+
+      <div class="predict-panel reveal reveal-delay-1">
+        <!-- DROPZONE -->
+        <div id="dropzone" role="button" tabindex="0" aria-label="Upload an image of a handwritten digit">
+          <canvas id="dropzone-grid" aria-hidden="true"></canvas>
+          <div class="dz-border"></div>
+
+          <div class="dz-content" id="dz-idle">
+            <div class="dz-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 16V4M12 4l-5 5M12 4l5 5M4 20h16"/></svg>
+            </div>
+            <div class="dz-title">Drop an image</div>
+            <div class="dz-hint">or click to browse · PNG / JPG</div>
+          </div>
+
+          <div class="dz-preview" id="dz-preview">
+            <img id="dz-preview-img" alt="Preview of the uploaded digit" />
+            <div class="dz-preview-name" id="dz-preview-name"></div>
+            <span class="dz-replace">Click to replace</span>
+          </div>
+
+          <input type="file" id="file-input" accept="image/png, image/jpeg" class="visually-hidden" aria-hidden="true" tabindex="-1" />
+        </div>
+
+        <!-- OUTPUT -->
+        <div id="predict-output">
+          <div class="po-idle" id="po-idle">
+            <span class="eyebrow">Status</span>
+            <p>Waiting for an image. Once you upload one, press predict and the model will classify it.</p>
+            <button class="btn-primary" id="predict-btn" disabled aria-disabled="true">PREDICT DIGIT <span class="arrow">→</span></button>
+          </div>
+
+          <div class="po-processing" id="po-processing" aria-live="polite">
+            <div class="proc-step" data-step="0">IMAGE RECEIVED</div>
+            <div class="proc-step" data-step="1">PIXEL ANALYSIS</div>
+            <div class="proc-step" data-step="2">NEURAL NETWORK</div>
+            <div class="proc-step" data-step="3">CLASSIFYING</div>
+            <div class="proc-step" data-step="4">RESULT</div>
+          </div>
+
+          <div class="po-result" id="po-result" aria-live="polite">
+            <div>
+              <div class="eyebrow result-label">Predicted digit</div>
+              <div class="result-digit" id="result-digit">–</div>
+            </div>
+            <div class="result-confidence" id="result-confidence"></div>
+            <div class="prob-bars" id="prob-bars"></div>
+            <div class="result-actions">
+              <button class="btn-ghost" id="view-pixels-btn">VIEW PIXELS</button>
+              <button class="btn-ghost" id="predict-again-btn">TRY ANOTHER IMAGE</button>
+            </div>
+          </div>
+
+          <div class="error-box" id="error-box" role="alert"></div>
+        </div>
+      </div>
+
+      <!-- PIXEL VIEW -->
+      <div id="pixel-panel" class="reveal">
+        <span class="eyebrow">What the network actually sees</span>
+        <div class="pixel-grid-wrap" style="margin-top:22px;">
+          <div id="pixel-grid" role="img" aria-label="28 by 28 grid of grayscale pixel values from the uploaded image"></div>
+          <div class="pixel-readout">
+            <div class="swatch" id="pixel-swatch"></div>
+            <div class="row">Pixel<span>—</span></div>
+            <div class="row">x: <b id="pixel-x">—</b></div>
+            <div class="row">y: <b id="pixel-y">—</b></div>
+            <div class="row">value: <b id="pixel-v">—</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       CONFUSION MATRIX
+       ============================================================ -->
+  <section id="confusion">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Model <em>limitations</em></span>
+        <h2 class="section-title">WHERE DOES IT<br><span class="accent-word">GET CONFUSED?</span></h2>
+      </div>
+
+      <div class="reveal reveal-delay-1">
+        <div class="confusion-wrap">
+          <div class="cm-y-label">Actual</div>
+          <div class="cm-col">
+            <div id="cm-grid" aria-hidden="true"></div>
+            <div class="cm-axis-row" id="cm-axis-row"></div>
+            <div class="cm-x-label">Predicted</div>
+          </div>
+        </div>
+        <p class="confusion-note">The model performs well when the handwriting is clear, but similar-looking digits can still confuse the classifier.</p>
+        <span class="confusion-placeholder-tag">Awaiting evaluation data — connect real confusion-matrix values here</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       PERFORMANCE
+       ============================================================ -->
+  <section id="performance">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Reported <em>performance</em></span>
+        <h2 class="section-title">MODEL<br><span class="accent-word">PERFORMANCE.</span></h2>
+      </div>
+
+      <div class="perf-grid reveal reveal-delay-1">
+        <div class="perf-cell"><div class="perf-value" data-count="92.5" data-suffix="%">0%</div><div class="perf-label">Test Accuracy</div></div>
+        <div class="perf-cell"><div class="perf-value">PyTorch</div><div class="perf-label">Model</div></div>
+        <div class="perf-cell"><div class="perf-value" data-count="10">0</div><div class="perf-label">Classes</div></div>
+        <div class="perf-cell"><div class="perf-value" data-count="784">0</div><div class="perf-label">Input Features</div></div>
+        <div class="perf-cell"><div class="perf-value">28 × 28</div><div class="perf-label">Image Size</div></div>
+        <div class="perf-cell"><div class="perf-value accent-word">10 / 10</div><div class="perf-label">Output Neurons Mapped</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       FINAL CTA
+       ============================================================ -->
+  <section id="final-cta">
+    <div class="container reveal">
+      <div class="eyebrow" style="margin-bottom:20px;">One more <em>try</em></div>
+      <div class="cta-title">YOUR TURN.</div>
+      <p class="cta-sub">Upload a handwritten digit and see what the model sees.</p>
+      <a href="#predict" class="btn-primary" id="try-again-cta">TRY IT AGAIN <span class="arrow">→</span></a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="container footer-inner">
+    <span>MNIST DIGIT RECOGNITION — STUDENT PROJECT</span>
+    <span>PYTORCH + FASTAPI</span>
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+   GLOBAL STATE / HELPERS
+   ============================================================ */
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const isTouch = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+
+/* ------------------------------------------------------------
+   1. LOADER
+   ------------------------------------------------------------ */
+(function initLoader(){
+  const loader = document.getElementById('loader');
+  const bitsEl = document.getElementById('loader-bits');
+  const bits = [];
+  for(let i=0;i<8;i++){
+    const span = document.createElement('span');
+    span.textContent = Math.round(Math.random());
+    bitsEl.appendChild(span);
+    bits.push(span);
+  }
+
+  let flickerCount = 0;
+  const flicker = setInterval(()=>{
+    bits.forEach(b=>{
+      b.textContent = Math.round(Math.random());
+      b.classList.toggle('on', Math.random() > 0.5);
+    });
+    flickerCount++;
+    if(flickerCount > 7){ clearInterval(flicker); }
+  }, 90);
+
+  const hide = () => {
+    loader.classList.add('is-hidden');
+    document.body.style.overflow = '';
+  };
+
+  document.body.style.overflow = 'hidden';
+  const minTime = prefersReducedMotion ? 200 : 900;
+  window.setTimeout(hide, minTime);
+})();
+
+/* ------------------------------------------------------------
+   2. CUSTOM CURSOR (magnetic, desktop only)
+   ------------------------------------------------------------ */
+if(!isTouch){
+  const dot = document.getElementById('cursor-dot');
+  let mx = -100, my = -100, cx = -100, cy = -100;
+  window.addEventListener('mousemove', e=>{ mx = e.clientX; my = e.clientY; });
+
+  function raf(){
+    cx += (mx-cx)*0.2;
+    cy += (my-cy)*0.2;
+    dot.style.transform = `translate(${cx}px, ${cy}px) translate(-50%,-50%)`;
+    requestAnimationFrame(raf);
+  }
+  raf();
+
+  document.querySelectorAll('a, button, #dropzone, .cm-cell, .px').forEach(el=>{
+    el.addEventListener('mouseenter', ()=> dot.classList.add('is-active'));
+    el.addEventListener('mouseleave', ()=> dot.classList.remove('is-active'));
+  });
+}
+
+/* ------------------------------------------------------------
+   3. NAV — active section indicator + smooth in-page scroll
+   ------------------------------------------------------------ */
+(function initNav(){
+  const navLinks = document.querySelectorAll('.nav-links a');
+  const targets = ['model','pipeline','predict'].map(id=>document.getElementById(id)).filter(Boolean);
+
+  const obs = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){
+        navLinks.forEach(l=>l.classList.remove('is-active'));
+        const link = document.querySelector(`.nav-links a[data-nav="${entry.target.id}"]`);
+        if(link) link.classList.add('is-active');
+      }
+    });
+  }, { rootMargin: '-45% 0px -45% 0px' });
+
+  targets.forEach(t=>obs.observe(t));
+})();
+
+/* ------------------------------------------------------------
+   4. REVEAL ON SCROLL
+   ------------------------------------------------------------ */
+(function initReveal(){
+  const items = document.querySelectorAll('.reveal');
+  if(prefersReducedMotion){ items.forEach(i=>i.classList.add('is-visible')); return; }
+  const obs = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){
+        entry.target.classList.add('is-visible');
+        obs.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15 });
+  items.forEach(i=>obs.observe(i));
+})();
+
+/* ------------------------------------------------------------
+   5. HERO — reactive pixel grid canvas
+   ------------------------------------------------------------ */
+(function initHeroGrid(){
+  const canvas = document.getElementById('hero-canvas');
+  const ctx = canvas.getContext('2d');
+  let w, h, cols, rows, cell;
+  let mouseX = -9999, mouseY = -9999;
+  let targetMouseX = -9999, targetMouseY = -9999;
+
+  function resize(){
+    w = canvas.width = canvas.offsetWidth * devicePixelRatio;
+    h = canvas.height = canvas.offsetHeight * devicePixelRatio;
+    cell = Math.max(16, Math.floor(w / 60));
+    cols = Math.ceil(w / cell) + 1;
+    rows = Math.ceil(h / cell) + 1;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  canvas.parentElement.addEventListener('mousemove', e=>{
+    const rect = canvas.getBoundingClientRect();
+    targetMouseX = (e.clientX - rect.left) * devicePixelRatio;
+    targetMouseY = (e.clientY - rect.top) * devicePixelRatio;
+  });
+  canvas.parentElement.addEventListener('mouseleave', ()=>{
+    targetMouseX = -9999; targetMouseY = -9999;
+  });
+
+  const seeds = [];
+  for(let i=0;i<400;i++) seeds.push(Math.random());
+
+  let frame = 0;
+  function draw(){
+    frame++;
+    mouseX += (targetMouseX-mouseX)*0.08;
+    mouseY += (targetMouseY-mouseY)*0.08;
+
+    ctx.clearRect(0,0,w,h);
+    const radius = cell * 7;
+
+    for(let r=0;r<rows;r++){
+      for(let c=0;c<cols;c++){
+        const x = c*cell, y = r*cell;
+        const seed = seeds[(r*cols+c) % seeds.length];
+        const ambient = (Math.sin(frame*0.01 + seed*10) + 1) / 2 * 0.05;
+
+        const dx = x - mouseX, dy = y - mouseY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const proximity = Math.max(0, 1 - dist / radius);
+
+        const alpha = Math.min(0.9, ambient + proximity * 0.55);
+        if(alpha < 0.02) continue;
+
+        ctx.fillStyle = proximity > 0.5
+          ? `rgba(255,62,45,${alpha})`
+          : `rgba(243,242,238,${alpha})`;
+        ctx.fillRect(x+1, y+1, cell-2, cell-2);
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+
+  if(prefersReducedMotion){
+    // Static, gentle single-pass render, no animation loop.
+    ctx.fillStyle = 'rgba(243,242,238,0.06)';
+    for(let r=0;r<rows;r++) for(let c=0;c<cols;c++) ctx.fillRect(c*cell+1, r*cell+1, cell-2, cell-2);
+  } else {
+    draw();
+  }
+})();
+
+/* ------------------------------------------------------------
+   6. HOW IT WORKS — scroll-driven pipeline story
+   ------------------------------------------------------------ */
+(function initPipeline(){
+  const track = document.getElementById('pipeline-track');
+  const stages = document.querySelectorAll('.pipeline-stage');
+  const dots = document.querySelectorAll('#pipeline-progress .dot');
+
+  function update(){
+    const rect = track.getBoundingClientRect();
+    const total = rect.height - window.innerHeight;
+    const scrolled = Math.min(Math.max(-rect.top, 0), total);
+    const progress = total > 0 ? scrolled / total : 0;
+    const activeIndex = Math.min(stages.length-1, Math.floor(progress * stages.length));
+
+    stages.forEach((stage, i)=>{
+      const localProgress = Math.min(1, Math.max(0, (progress*stages.length) - i));
+      const opacity = i === activeIndex ? 1 : 0.15;
+      const translate = i < activeIndex ? -30 : (i > activeIndex ? 30 : 0);
+      stage.style.opacity = opacity;
+      stage.style.transform = `translateY(${translate}px)`;
+      stage.style.transition = prefersReducedMotion ? 'none' : 'opacity .5s ease, transform .5s ease';
+    });
+
+    dots.forEach((d,i)=> d.classList.toggle('is-active', i === activeIndex));
+  }
+
+  window.addEventListener('scroll', ()=> requestAnimationFrame(update), { passive:true });
+  window.addEventListener('resize', update);
+  update();
+
+  // Populate the 28x28 mini grid (stage 02) with static ambient values
+  const grid = document.getElementById('pv-grid-vis');
+  for(let i=0;i<196;i++){
+    const cellDiv = document.createElement('div');
+    const v = Math.random();
+    cellDiv.style.opacity = (v*0.6+0.05).toFixed(2);
+    cellDiv.style.background = v > 0.75 ? 'var(--accent)' : 'var(--text)';
+    grid.appendChild(cellDiv);
+  }
+
+  // Populate feature list (stage 03) with sample pixel->value pairs
+  const featuresEl = document.getElementById('pv-features-vis');
+  let html = '';
+  for(let i=0;i<48;i++){
+    const val = Math.floor(Math.random()*255);
+    html += `<span>px[${i}] = <b>${val}</b></span>`;
+  }
+  featuresEl.innerHTML = html;
+})();
+
+/* ------------------------------------------------------------
+   7. NEURAL NETWORK VISUALIZATION (lightweight canvas)
+   ------------------------------------------------------------ */
+(function initNetworkViz(){
+  const canvas = document.getElementById('network-canvas');
+  const ctx = canvas.getContext('2d');
+  const wrap = document.getElementById('network-canvas-wrap');
+  let w,h;
+
+  function resize(){
+    w = canvas.width = wrap.offsetWidth * devicePixelRatio;
+    h = canvas.height = wrap.offsetHeight * devicePixelRatio;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // 4 layers, reduced node counts for a readable abstract diagram
+  const layerCounts = [10, 8, 6, 10];
+  const layers = layerCounts.map((count, li)=>{
+    const nodes = [];
+    for(let i=0;i<count;i++){
+      nodes.push({
+        x: (li+0.5) / layerCounts.length,
+        y: (i+0.5) / count
+      });
+    }
+    return nodes;
+  });
+
+  let pulses = [];
+  let playing = false;
+  let lastSpawn = 0;
+
+  function spawnPulse(){
+    const fromLayer = Math.floor(Math.random()*(layers.length-1));
+    const fromNode = layers[fromLayer][Math.floor(Math.random()*layers[fromLayer].length)];
+    const toNode = layers[fromLayer+1][Math.floor(Math.random()*layers[fromLayer+1].length)];
+    pulses.push({ fromNode, toNode, t:0 });
+  }
+
+  function draw(ts){
+    ctx.clearRect(0,0,w,h);
+    const pad = 24 * devicePixelRatio;
+
+    // edges (faint)
+    ctx.strokeStyle = 'rgba(139,141,147,0.12)';
+    ctx.lineWidth = 1;
+    for(let li=0; li<layers.length-1; li++){
+      layers[li].forEach(a=>{
+        layers[li+1].forEach(b=>{
+          ctx.beginPath();
+          ctx.moveTo(pad + a.x*(w-2*pad), pad + a.y*(h-2*pad));
+          ctx.lineTo(pad + b.x*(w-2*pad), pad + b.y*(h-2*pad));
+          ctx.stroke();
+        });
+      });
+    }
+
+    // pulses
+    if(playing && ts - lastSpawn > 90){
+      spawnPulse();
+      lastSpawn = ts;
+    }
+    pulses.forEach(p=>{
+      p.t += 0.02;
+      const x = pad + (p.fromNode.x + (p.toNode.x-p.fromNode.x)*p.t) * (w-2*pad);
+      const y = pad + (p.fromNode.y + (p.toNode.y-p.fromNode.y)*p.t) * (h-2*pad);
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(255,62,45,0.9)';
+      ctx.arc(x,y, 2.4*devicePixelRatio, 0, Math.PI*2);
+      ctx.fill();
+    });
+    pulses = pulses.filter(p=>p.t < 1);
+
+    // nodes
+    layers.forEach(layer=>{
+      layer.forEach(n=>{
+        const x = pad + n.x*(w-2*pad), y = pad + n.y*(h-2*pad);
+        ctx.beginPath();
+        ctx.fillStyle = '#1f2126';
+        ctx.arc(x,y, 4*devicePixelRatio, 0, Math.PI*2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(243,242,238,0.3)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      });
+    });
+
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+
+  const obs = new IntersectionObserver(entries=>{
+    entries.forEach(e=>{ playing = e.isIntersecting && !prefersReducedMotion; });
+  }, { threshold: 0.3 });
+  obs.observe(wrap);
+})();
+
+/* ------------------------------------------------------------
+   8. PREDICTION SECTION
+   ------------------------------------------------------------ */
+(function initPredict(){
+  const API_URL = 'http://127.0.0.1:8000/predict'; // change for production deployment
+
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('file-input');
+  const dzIdle = document.getElementById('dz-idle');
+  const dzPreview = document.getElementById('dz-preview');
+  const dzPreviewImg = document.getElementById('dz-preview-img');
+  const dzPreviewName = document.getElementById('dz-preview-name');
+
+  const predictBtn = document.getElementById('predict-btn');
+  const poIdle = document.getElementById('po-idle');
+  const poProcessing = document.getElementById('po-processing');
+  const poResult = document.getElementById('po-result');
+  const errorBox = document.getElementById('error-box');
+
+  const resultDigit = document.getElementById('result-digit');
+  const resultConfidence = document.getElementById('result-confidence');
+  const probBars = document.getElementById('prob-bars');
+
+  const viewPixelsBtn = document.getElementById('view-pixels-btn');
+  const predictAgainBtn = document.getElementById('predict-again-btn');
+  const pixelPanel = document.getElementById('pixel-panel');
+
+  let currentFile = null;
+  let currentObjectUrl = null;
+
+  // ---- Dropzone reactive pixel-pattern background ----
+  const dzCanvas = document.getElementById('dropzone-grid');
+  const dzCtx = dzCanvas.getContext('2d');
+  let dzW, dzH, dzMouse = {x:-999,y:-999};
+  function dzResize(){
+    dzW = dzCanvas.width = dropzone.offsetWidth * devicePixelRatio;
+    dzH = dzCanvas.height = dropzone.offsetHeight * devicePixelRatio;
+  }
+  dzResize();
+  window.addEventListener('resize', dzResize);
+  dropzone.addEventListener('mousemove', e=>{
+    const r = dropzone.getBoundingClientRect();
+    dzMouse.x = (e.clientX-r.left)*devicePixelRatio;
+    dzMouse.y = (e.clientY-r.top)*devicePixelRatio;
+  });
+  dropzone.addEventListener('mouseleave', ()=>{ dzMouse.x=-999; dzMouse.y=-999; });
+
+  function drawDzGrid(){
+    dzCtx.clearRect(0,0,dzW,dzH);
+    const cell = 22*devicePixelRatio;
+    const cols = Math.ceil(dzW/cell), rows = Math.ceil(dzH/cell);
+    for(let r=0;r<rows;r++){
+      for(let c=0;c<cols;c++){
+        const x=c*cell, y=r*cell;
+        const dx=x-dzMouse.x, dy=y-dzMouse.y;
+        const dist = Math.sqrt(dx*dx+dy*dy);
+        const prox = Math.max(0, 1 - dist/(cell*5));
+        if(prox < 0.04) continue;
+        dzCtx.fillStyle = `rgba(255,62,45,${prox*0.4})`;
+        dzCtx.fillRect(x+1,y+1,cell-2,cell-2);
+      }
+    }
+    requestAnimationFrame(drawDzGrid);
+  }
+  if(!prefersReducedMotion) drawDzGrid();
+
+  // ---- File handling ----
+  function handleFile(file){
+    if(!file || !file.type.match(/image\/(png|jpeg|jpg)/)){
+      showError('Please upload a PNG or JPG image.');
+      return;
+    }
+    currentFile = file;
+    if(currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+    currentObjectUrl = URL.createObjectURL(file);
+
+    dzPreviewImg.src = currentObjectUrl;
+    dzPreviewName.textContent = file.name;
+    dzIdle.style.display = 'none';
+    dzPreview.classList.add('is-active');
+
+    predictBtn.disabled = false;
+    predictBtn.removeAttribute('aria-disabled');
+    hideError();
+    resetResult();
+  }
+
+  dropzone.addEventListener('click', ()=> fileInput.click());
+  dropzone.addEventListener('keydown', e=>{
+    if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); fileInput.click(); }
+  });
+  fileInput.addEventListener('change', e=> handleFile(e.target.files[0]));
+
+  ['dragenter','dragover'].forEach(evt=>{
+    dropzone.addEventListener(evt, e=>{
+      e.preventDefault();
+      dropzone.classList.add('is-dragover');
+    });
+  });
+  ['dragleave','drop'].forEach(evt=>{
+    dropzone.addEventListener(evt, e=>{
+      e.preventDefault();
+      dropzone.classList.remove('is-dragover');
+    });
+  });
+  dropzone.addEventListener('drop', e=>{
+    const file = e.dataTransfer.files[0];
+    handleFile(file);
+  });
+
+  // ---- Error handling ----
+  function showError(message){
+    errorBox.innerHTML = `<b>Error —</b> ${message}`;
+    errorBox.classList.add('is-active');
+  }
+  function hideError(){ errorBox.classList.remove('is-active'); }
+
+  function resetResult(){
+    poResult.classList.remove('is-active');
+    poProcessing.classList.remove('is-active');
+    poIdle.style.display = 'flex';
+    pixelPanel.classList.remove('is-active');
+  }
+
+  // ---- Processing animation ----
+  const procSteps = poProcessing.querySelectorAll('.proc-step');
+  function runProcessingAnimation(){
+    return new Promise(resolve=>{
+      procSteps.forEach(s=> s.classList.remove('is-current','is-done'));
+      let i = 0;
+      const stepDelay = prefersReducedMotion ? 0 : 220;
+      function next(){
+        if(i>0) procSteps[i-1].classList.add('is-done');
+        if(i < procSteps.length){
+          procSteps[i].classList.add('is-current');
+          i++;
+          setTimeout(next, stepDelay);
+        } else {
+          resolve();
+        }
+      }
+      next();
+    });
+  }
+
+  // ---- API call ----
+  async function predictDigit(file){
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      body: formData
+    });
+
+    if(!response.ok){
+      throw new Error(`Server responded with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    // Expected minimum shape: { digit: 7 }
+    // Optionally the backend may also return: { confidence: 0.924, probabilities: [...] }
+    if(typeof data.digit !== 'number'){
+      throw new Error('Unexpected response format from the model.');
+    }
+    return data;
+  }
+
+  function renderResult(data){
+    resultDigit.textContent = data.digit;
+    resultDigit.classList.add('is-entering');
+    requestAnimationFrame(()=> requestAnimationFrame(()=> resultDigit.classList.remove('is-entering')));
+
+    if(typeof data.confidence === 'number'){
+      resultConfidence.innerHTML = `Confidence <b>${(data.confidence*100).toFixed(1)}%</b>`;
+    } else {
+      resultConfidence.textContent = '';
+    }
+
+    probBars.innerHTML = '';
+    if(Array.isArray(data.probabilities) && data.probabilities.length === 10){
+      data.probabilities.forEach((p, digit)=>{
+        const pct = p*100;
+        const row = document.createElement('div');
+        row.className = 'prob-row' + (digit === data.digit ? ' is-top' : '');
+        row.innerHTML = `
+          <span>${digit}</span>
+          <span class="prob-track"><span class="prob-fill" style="width:0%"></span></span>
+          <span class="prob-pct">${pct.toFixed(1)}%</span>
+        `;
+        probBars.appendChild(row);
+        requestAnimationFrame(()=>{
+          row.querySelector('.prob-fill').style.width = pct + '%';
+        });
+      });
+    }
+
+    poProcessing.classList.remove('is-active');
+    poResult.classList.add('is-active');
+  }
+
+  predictBtn.addEventListener('click', async ()=>{
+    if(!currentFile) return;
+    hideError();
+    poIdle.style.display = 'none';
+    poResult.classList.remove('is-active');
+    poProcessing.classList.add('is-active');
+    pixelPanel.classList.remove('is-active');
+
+    try{
+      const [data] = await Promise.all([
+        predictDigit(currentFile),
+        runProcessingAnimation()
+      ]);
+      renderResult(data);
+    }catch(err){
+      poProcessing.classList.remove('is-active');
+      poIdle.style.display = 'flex';
+      if(err.message.includes('fetch') || err.name === 'TypeError'){
+        showError('Could not reach the prediction server. Make sure the FastAPI backend is running.');
+      } else {
+        showError(err.message || 'Something went wrong while predicting.');
+      }
+    }
+  });
+
+  predictAgainBtn.addEventListener('click', ()=>{
+    fileInput.value = '';
+    currentFile = null;
+    dzPreview.classList.remove('is-active');
+    dzIdle.style.display = 'flex';
+    predictBtn.disabled = true;
+    predictBtn.setAttribute('aria-disabled','true');
+    resetResult();
+  });
+
+  document.getElementById('try-again-cta').addEventListener('click', e=>{
+    e.preventDefault();
+    document.getElementById('predict').scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth' });
+  });
+
+  // ---- View pixels: real client-side downsample of the uploaded image ----
+  viewPixelsBtn.addEventListener('click', ()=>{
+    if(!currentFile) return;
+    pixelPanel.classList.add('is-active');
+    renderPixelGrid(currentObjectUrl);
+    pixelPanel.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block:'center' });
+  });
+
+  function renderPixelGrid(imgUrl){
+    const img = new Image();
+    img.onload = ()=>{
+      const off = document.createElement('canvas');
+      off.width = 28; off.height = 28;
+      const octx = off.getContext('2d');
+      octx.fillStyle = '#000';
+      octx.fillRect(0,0,28,28);
+      // letterbox the source image into the 28x28 canvas, preserving aspect ratio
+      const scale = Math.min(28/img.width, 28/img.height);
+      const dw = img.width*scale, dh = img.height*scale;
+      octx.drawImage(img, (28-dw)/2, (28-dh)/2, dw, dh);
+      const imageData = octx.getImageData(0,0,28,28).data;
+
+      const grid = document.getElementById('pixel-grid');
+      grid.innerHTML = '';
+      const px = document.getElementById('pixel-x');
+      const py = document.getElementById('pixel-y');
+      const pv = document.getElementById('pixel-v');
+      const swatch = document.getElementById('pixel-swatch');
+
+      for(let y=0;y<28;y++){
+        for(let x=0;x<28;x++){
+          const idx = (y*28+x)*4;
+          const r = imageData[idx], g = imageData[idx+1], b = imageData[idx+2];
+          const gray = Math.round((r+g+b)/3);
+          const cellDiv = document.createElement('div');
+          cellDiv.className = 'px';
+          cellDiv.style.background = `rgb(${gray},${gray},${gray})`;
+          cellDiv.addEventListener('mouseenter', ()=>{
+            px.textContent = x;
+            py.textContent = y;
+            pv.textContent = gray;
+            swatch.style.background = `rgb(${gray},${gray},${gray})`;
+          });
+          grid.appendChild(cellDiv);
+        }
+      }
+    };
+    img.src = imgUrl;
+  }
+})();
+
+/* ------------------------------------------------------------
+   9. CONFUSION MATRIX — structural placeholder
+   (Do not fabricate model metrics — this renders an empty
+    structure ready to receive real evaluation data.)
+   ------------------------------------------------------------ */
+(function initConfusionMatrix(){
+  // Replace this with the real 10x10 confusion matrix computed
+  // from your evaluation set, e.g.:
+  // const CONFUSION_MATRIX = [[...10 values...], ... x10 rows];
+  const CONFUSION_MATRIX = null;
+
+  const grid = document.getElementById('cm-grid');
+  const axisRow = document.getElementById('cm-axis-row');
+
+  for(let d=0; d<10; d++){
+    const s = document.createElement('span');
+    s.textContent = d;
+    axisRow.appendChild(s);
+  }
+
+  for(let row=0; row<10; row++){
+    for(let col=0; col<10; col++){
+      const cell = document.createElement('div');
+      cell.className = 'cm-cell' + (row===col ? ' is-diagonal' : '');
+      if(CONFUSION_MATRIX){
+        const value = CONFUSION_MATRIX[row][col];
+        cell.dataset.tip = `Actual ${row} · Predicted ${col}: ${value}`;
+        const intensity = Math.min(1, value / 100);
+        cell.style.background = row===col
+          ? `rgba(255,62,45,${0.15 + intensity*0.7})`
+          : `rgba(139,141,147,${0.06 + intensity*0.3})`;
+      } else {
+        cell.dataset.tip = `Actual ${row} · Predicted ${col}: —`;
+      }
+      grid.appendChild(cell);
+    }
+  }
+})();
+
+/* ------------------------------------------------------------
+   10. PERFORMANCE NUMBER COUNT-UP
+   ------------------------------------------------------------ */
+(function initCountUp(){
+  const items = document.querySelectorAll('.perf-value[data-count]');
+  const obs = new IntersectionObserver(entries=>{
+    entries.forEach(entry=>{
+      if(!entry.isIntersecting) return;
+      const el = entry.target;
+      const target = parseFloat(el.dataset.count);
+      const suffix = el.dataset.suffix || '';
+      const isDecimal = el.dataset.count.includes('.');
+      if(prefersReducedMotion){
+        el.textContent = target + suffix;
+        obs.unobserve(el);
+        return;
+      }
+      const duration = 1200;
+      const start = performance.now();
+      function tick(now){
+        const p = Math.min(1, (now-start)/duration);
+        const eased = 1 - Math.pow(1-p, 3);
+        const val = target * eased;
+        el.textContent = (isDecimal ? val.toFixed(1) : Math.round(val)) + suffix;
+        if(p < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+      obs.unobserve(el);
+    });
+  }, { threshold: 0.5 });
+  items.forEach(i=>obs.observe(i));
+})();
+</script>
+</body>
+</html>
