@@ -1,5 +1,5 @@
-fastapi
-uvicorn
-python-multipart
-pillow
-torch
+fastapi>=0.115
+uvicorn>=0.30
+python-multipart>=0.0.9
+pillow>=10.4
+numpy>=2.0
