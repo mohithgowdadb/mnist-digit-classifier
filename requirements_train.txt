@@ -1,0 +1,8 @@
+# Only needed on your own computer to TRAIN the model (python train.py).
+# The deployed server uses requirements.txt, which does not include these.
+torch
+pandas
+scikit-learn
+matplotlib
+pillow
+numpy
